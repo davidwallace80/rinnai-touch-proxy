@@ -19,7 +19,7 @@ const HA_DISCOVERY_TOPIC = 'homeassistant';
 
 const log = new Logger({minLevel: LOG_LEVEL});
 
-function publishEntity(mqttClient: MqttClient, type: string, config: Object) {
+function publishHaEntity(mqttClient: MqttClient, type: string, config: Object) {
   const entityBase = {
     platform: 'mqtt',
     device: {
@@ -37,8 +37,8 @@ function publishEntity(mqttClient: MqttClient, type: string, config: Object) {
   mqttClient.publish(`${HA_DISCOVERY_TOPIC}/${type}/${config.unique_id}/config`, JSON.stringify(config, null, 4), {retain: true});
 }
 
-function haDiscovery(mqttClient: MqttClient) {
-  publishEntity(mqttClient, 'sensor', {
+function publishHaDiscovery(mqttClient: MqttClient) {
+  publishHaEntity(mqttClient, 'sensor', {
     name: 'Status',
     unique_id: 'rinnai_touch_proxy_status',
     state_topic: ONLINE_TOPIC,
@@ -46,7 +46,7 @@ function haDiscovery(mqttClient: MqttClient) {
     json_attributes_topic: CONFIG_TOPIC,
   });
 
-  publishEntity(mqttClient, 'switch', {
+  publishHaEntity(mqttClient, 'switch', {
     name: 'Reverse Cycle',
     unique_id: 'rinnai_touch_proxy_reverse_cycle_operating_state',
     device_class: 'switch',
@@ -60,7 +60,7 @@ function haDiscovery(mqttClient: MqttClient) {
     optimistic: false,
   });
 
-  publishEntity(mqttClient, 'climate', {
+  publishHaEntity(mqttClient, 'climate', {
     name: 'Zone Control',
     unique_id: 'rinnai_touch_proxy_zone_common',
     modes: ['cool', 'heat_cool', 'heat'],
@@ -79,11 +79,11 @@ function haDiscovery(mqttClient: MqttClient) {
   });
 }
 
-async function mqttRinnaiTouch(mqttClient: MqttClient, api: RinnaiTouchApi) {
-  await api.connect();
-  const config = api.config();
+async function publishRinnaiTouch(mqttClient: MqttClient, rinnaiTouch: RinnaiTouchApi) {
+  await rinnaiTouch.connect();
+  const config = rinnaiTouch.config();
   log.info(`publishing to mqtt broker on ${mqttClient.options.host}:${mqttClient.options.port}`);
-  mqttClient.publish(STATUS_TOPIC, JSON.stringify(api._status.state, null, 4), {retain: true});
+  mqttClient.publish(STATUS_TOPIC, JSON.stringify(rinnaiTouch._status.state, null, 4), {retain: true});
   mqttClient.publish(CONFIG_TOPIC, JSON.stringify(config, null, 4), {retain: true});
 
   // publish config properties
@@ -104,8 +104,9 @@ async function main() {
     throw new Error('mqtt host not specified!');
   }
 
-  const api = RINNAI_HOST && RINNAI_PORT ? new RinnaiTouchApi(RINNAI_HOST, RINNAI_PORT) : new RinnaiTouchApi();
-  await api.connect();
+  // Rinnai Touch setup
+  const rinnaiTouch = RINNAI_HOST && RINNAI_PORT ? new RinnaiTouchApi(RINNAI_HOST, RINNAI_PORT) : new RinnaiTouchApi();
+  await rinnaiTouch.connect();
 
   // MQTT setup
   const mqttClient = mqtt.connect({
@@ -118,8 +119,8 @@ async function main() {
   mqttClient.on('connect', async () => {
     log.info(`connected to mqtt broker on ${MQTT_HOST}:${MQTT_PORT}`);
     mqttClient.publish(ONLINE_TOPIC, 'true', {retain: true});
-    await mqttRinnaiTouch(mqttClient, api);
-    haDiscovery(mqttClient);
+    await publishRinnaiTouch(mqttClient, rinnaiTouch);
+    publishHaDiscovery(mqttClient);
   });
 
   mqttClient.on('error', error => log.error(`MQTT error: ${error}`));
@@ -134,11 +135,10 @@ async function main() {
         if (command.length !== 3) {
           throw new Error('invalid command format');
         }
-        await api.connect();
-        const result = await api.command(command[0], command[1], command[2]);
+        await rinnaiTouch.connect();
+        const result = await rinnaiTouch.command(command[0], command[1], command[2]);
         result ? log.info(`command succesful: ${payload.toString()}`) : log.warn(`command failed: ${payload.toString()}`);
         mqttClient.publish(`${CONFIG_CMD_TOPIC}/success`, String(result));
-        await mqttRinnaiTouch(mqttClient, api);
       } catch (e) {
         log.error(`error processing command: ${e.message}`);
         mqttClient.publish(`${CONFIG_CMD_TOPIC}/success`, 'false');
@@ -146,24 +146,31 @@ async function main() {
     }
 
     if (topic === STATUS_CMD_TOPIC) {
-      await api.connect();
-      api.send(payload.toString());
-      // need a delay or check for status change
-      await mqttRinnaiTouch(mqttClient, api);
+      await rinnaiTouch.connect();
+      rinnaiTouch.send(payload.toString());
     }
   });
 
   mqttClient.subscribe(CONFIG_CMD_TOPIC);
   mqttClient.subscribe(STATUS_CMD_TOPIC);
 
-  setInterval(async () => {
-    await mqttRinnaiTouch(mqttClient, api);
-  }, 60 * 1000);
+  rinnaiTouch.on('statusChanged', () => {
+    log.info('detected status change on rinnai touch');
+    publishRinnaiTouch(mqttClient, rinnaiTouch);
+  });
+
+  setInterval(
+    async () => {
+      //await publishRinnaiTouch(mqttClient, rinnaiTouch);
+      console.log('keep alive');
+    },
+    5 * 60 * 1000
+  );
 
   // Clean up on exit
   process.on('SIGINT', () => {
     log.info('stopping rinnai touch proxy...');
-    api.disconnect();
+    rinnaiTouch.disconnect();
     mqttClient.end(false, undefined, () => {
       log.info('disconnected mqtt broker.');
     });

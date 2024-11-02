@@ -1,15 +1,18 @@
 require('dotenv').config(); // eslint-disable-line
+import _ from 'lodash';
 import {Logger} from 'tslog';
 import * as dgram from 'dgram';
 import * as net from 'net';
+import {EventEmitter} from 'stream';
 
 interface Status {
+  raw: string;
   sequence: number;
   state: Object[];
   timestamp: Date;
 }
 
-export class RinnaiTouchNet {
+export class RinnaiTouchNet extends EventEmitter {
   _udpClient: dgram.Socket;
   _tcpClient: net.Socket;
   _status: Status;
@@ -19,6 +22,7 @@ export class RinnaiTouchNet {
   port: number;
 
   constructor(host?: string, port?: number) {
+    super();
     if (host && port) {
       this.host = host;
       this.port = port;
@@ -83,11 +87,20 @@ export class RinnaiTouchNet {
             this.log.debug(`received data: ${data}`);
             if (data.toString() !== '*HELLO*') {
               try {
+                const lastStatus = this._status;
+
                 this._status = {
+                  raw: data.toString(),
                   sequence: +data.toString().substring(1, 7),
                   state: JSON.parse(data.toString().substring(7)),
                   timestamp: new Date(),
                 };
+
+                if (lastStatus) {
+                  if (lastStatus.raw !== this._status.raw) {
+                    this.emit('statusChanged');
+                  }
+                }
               } catch (e) {
                 this.log.error(e.message);
               }

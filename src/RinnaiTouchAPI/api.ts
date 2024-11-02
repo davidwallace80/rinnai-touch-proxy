@@ -41,7 +41,7 @@ export class RinnaiTouchApi extends RinnaiTouchNet {
     return config;
   }
 
-  async command(service: string, command: string, value: string): boolean {
+  async command(service: string, command: string, value: string): Promise<boolean> {
     this.log.info(`processing command: ${service}.${command}=${value}`);
     const serviceList = _.pickBy(systemCommandSet, o => _.has(o, 'serviceId'));
 

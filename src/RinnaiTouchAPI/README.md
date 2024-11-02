@@ -28,7 +28,7 @@ The RinnaiTouchAPI enables communication and control of the Brivis/Rinnai Touch 
     console.log('System Config:', config);
 
     // Send a command to turn on reverseCycle unit.
-    const success = await rinnaiTouch.gasHeating('reverseCycle', 'operatingState', 'on');
+    const success = await rinnaiTouch.command('reverseCycle', 'operatingState', 'on');
     if (success) {
     console.log('Gas heating turned on successfully.');
     }
