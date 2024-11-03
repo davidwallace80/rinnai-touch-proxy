@@ -42,7 +42,7 @@ function publishHaDiscovery(mqttClient: MqttClient) {
     name: 'Status',
     unique_id: 'rinnai_touch_proxy_status',
     state_topic: ONLINE_TOPIC,
-    value_template: `{% set lookup = {true: "online", false: "offline"} %} {{lookup[value]}}`,
+    value_template: `{% set lookup = {"true": "online", "false": "offline"} %} {{lookup[value]}}`,
     json_attributes_topic: CONFIG_TOPIC,
   });
 
@@ -63,12 +63,13 @@ function publishHaDiscovery(mqttClient: MqttClient) {
   publishHaEntity(mqttClient, 'climate', {
     name: 'Zone Control',
     unique_id: 'rinnai_touch_proxy_zone_common',
-    modes: ['cool', 'heat_cool', 'heat'],
+    modes: ['off', 'cool', 'heat_cool', 'heat'],
     mode_state_topic: `${CONFIG_TOPIC}/reverseCycle/reverseCycleMode`,
-    mode_state_template: `{% set lookup = {"cooling": "cool", "cooling_heating": "heat_cool", "heating": "heat"} %} {{lookup[value]}}`,
+    mode_state_template: `{% set lookup = {"cooling": "cool", "cooling_heating": "heat_cool", "heating": "heat", "null": "off"} %} {{lookup[value]}}`,
     mode_command_topic: CONFIG_CMD_TOPIC,
     mode_command_template: `{% set lookup = {"cool": "cooling", "heat_cool": "cooling_heating", "heat": "heating"} %}["reverseCycle", "reverseCycleMode", "{{lookup[value]}}"]`,
     temperature_state_topic: `${CONFIG_TOPIC}/reverseCycle/setTemp`,
+    temperature_state_template: `{% if value == "null" %}None{%else%}{{ value }}{% endif %}`,
     temperature_command_topic: CONFIG_CMD_TOPIC,
     temperature_command_template: `["reverseCycle", "setTemp", "{{value|int}}"]`,
     temperature_unit: 'C',
@@ -83,14 +84,15 @@ async function publishRinnaiTouch(mqttClient: MqttClient, rinnaiTouch: RinnaiTou
   await rinnaiTouch.connect();
   const config = rinnaiTouch.config();
   log.info(`publishing to mqtt broker on ${mqttClient.options.host}:${mqttClient.options.port}`);
-  mqttClient.publish(STATUS_TOPIC, JSON.stringify(rinnaiTouch._status.state, null, 4), {retain: true});
-  mqttClient.publish(CONFIG_TOPIC, JSON.stringify(config, null, 4), {retain: true});
+  const replacer = (k, v) => (v !== undefined ? v : null);
+  mqttClient.publish(STATUS_TOPIC, JSON.stringify(rinnaiTouch._status.state, replacer, 4), {retain: true});
+  mqttClient.publish(CONFIG_TOPIC, JSON.stringify(config, replacer, 4), {retain: true});
 
   // publish config properties
   for (const service of Object.keys(config)) {
     for (const key of Object.keys(config[service])) {
       const topic = `${CONFIG_TOPIC}/${service}/${key}`;
-      const message = String(config[service][key]);
+      const message = config[service][key] !== undefined ? String(config[service][key]) : 'null';
       mqttClient.publish(topic, message, {retain: true});
     }
   }
@@ -161,10 +163,9 @@ async function main() {
 
   setInterval(
     async () => {
-      //await publishRinnaiTouch(mqttClient, rinnaiTouch);
       console.log('keep alive');
     },
-    5 * 60 * 1000
+    10 * 60 * 1000
   );
 
   // Clean up on exit
