@@ -161,12 +161,8 @@ async function main() {
     publishRinnaiTouch(mqttClient, rinnaiTouch);
   });
 
-  setInterval(
-    async () => {
-      console.log('keep alive');
-    },
-    10 * 60 * 1000
-  );
+  // stop service from exiting
+  setInterval(async () => {}, 10 * 60 * 1000);
 
   // Clean up on exit
   process.on('SIGINT', () => {

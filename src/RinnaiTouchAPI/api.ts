@@ -1,10 +1,6 @@
 import _ from 'lodash';
-import {RinnaiTouchNet} from './net';
+import {RinnaiTouchNet, delay} from './net';
 import {serviceCommandSet, systemCommandSet} from './commandSet';
-
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 export class RinnaiTouchApi extends RinnaiTouchNet {
   config() {

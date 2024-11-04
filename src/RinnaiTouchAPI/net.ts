@@ -5,6 +5,10 @@ import * as dgram from 'dgram';
 import * as net from 'net';
 import {EventEmitter} from 'stream';
 
+export function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 interface Status {
   raw: string;
   sequence: number;
@@ -127,6 +131,7 @@ export class RinnaiTouchNet extends EventEmitter {
         }
 
         if (this.reconnect) {
+          await delay(5000); // adding delay to prevent rinnai touch module to refuse connection.
           this.log.info(`attempting reconnection to ${this.host}:${this.port}`);
           await this.connect();
         }
