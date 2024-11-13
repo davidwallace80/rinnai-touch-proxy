@@ -38,11 +38,54 @@ function publishHaEntity(mqttClient: MqttClient, type: string, config: Object) {
 }
 
 function publishHaDiscovery(mqttClient: MqttClient) {
-  publishHaEntity(mqttClient, 'sensor', {
-    name: 'Status',
+  publishHaEntity(mqttClient, 'binary_sensor', {
+    name: 'Proxy Status',
     unique_id: 'rinnai_touch_proxy_status',
     state_topic: ONLINE_TOPIC,
-    value_template: `{% set lookup = {"true": "online", "false": "offline"} %} {{lookup[value]}}`,
+    device_class: 'problem',
+    payload_on: 'false',
+    payload_off: 'true',
+  });
+
+  publishHaEntity(mqttClient, 'binary_sensor', {
+    name: 'Reverse Cycle Calling Cooling',
+    unique_id: 'rinnai_touch_proxy_reverse_cycle_cooling_called',
+    state_topic: `${CONFIG_TOPIC}/reverseCycle/coolingCalled`,
+    payload_on: 'true',
+    payload_off: 'false',
+  });
+
+  publishHaEntity(mqttClient, 'binary_sensor', {
+    name: 'Reverse Cycle Calling Heat',
+    unique_id: 'rinnai_touch_proxy_reverse_cycle_heating_called',
+    state_topic: `${CONFIG_TOPIC}/reverseCycle/heatingCalled`,
+    payload_on: 'true',
+    payload_off: 'false',
+  });
+
+  publishHaEntity(mqttClient, 'binary_sensor', {
+    name: 'Reverse Cycle Compressor',
+    unique_id: 'rinnai_touch_proxy_reverse_cycle_compressor_state',
+    state_topic: `${CONFIG_TOPIC}/reverseCycle/compressorState`,
+    payload_on: 'on',
+    payload_off: 'off',
+  });
+
+  publishHaEntity(mqttClient, 'binary_sensor', {
+    name: 'Reverse Cycle Fan',
+    unique_id: 'rinnai_touch_proxy_reverse_cycle_fan_state',
+    state_topic: `${CONFIG_TOPIC}/reverseCycle/fanState`,
+    payload_on: 'on',
+    payload_off: 'off',
+  });
+
+  publishHaEntity(mqttClient, 'binary_sensor', {
+    name: 'System Status',
+    unique_id: 'rinnai_touch_system_status',
+    state_topic: `${CONFIG_TOPIC}/system/faultDetected`,
+    device_class: 'problem',
+    payload_on: 'true',
+    payload_off: 'false',
     json_attributes_topic: CONFIG_TOPIC,
   });
 
