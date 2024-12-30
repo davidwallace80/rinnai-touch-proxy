@@ -12,7 +12,7 @@ export function delay(ms: number) {
 interface Status {
   raw: string;
   sequence: number;
-  state: Object[];
+  state: object[];
   timestamp: Date;
 }
 
@@ -22,7 +22,11 @@ export class RinnaiTouchNet extends EventEmitter {
   _status: Status;
   log = new Logger({minLevel: parseInt(process.env.LOG_LEVEL || '3')});
   connected = false;
-  reconnect = true;
+  reconnect: boolean;
+  connectionAttempt = 1;
+  keepAlive: boolean;
+  keepAliveInternal = 60;
+  keepAliveId: NodeJS.Timeout;
   host: string;
   port: number;
 
@@ -62,8 +66,10 @@ export class RinnaiTouchNet extends EventEmitter {
     });
   }
 
-  async connect(reconnect = true) {
+  async connect(reconnect = true, keepAlive = true) {
     this.reconnect = reconnect;
+    this.keepAlive = keepAlive;
+    this.log.debug(`connection settings: reconnect=${this.reconnect}, keepAlive=${this.keepAlive}`);
 
     if (this.connected) {
       this.log.info(`already connected to ${this.host}:${this.port}`);
@@ -75,15 +81,34 @@ export class RinnaiTouchNet extends EventEmitter {
       await this.discover();
     }
 
+    if (this.connectionAttempt >= 3) {
+      this.emit('connectionError');
+    }
+
+    this.log.info(`attempting connection to ${this.host}:${this.port} (${this.connectionAttempt})`);
+
     this._tcpClient = new net.Socket();
+    this._tcpClient.setKeepAlive(true, 60000);
     this._tcpClient.setTimeout(5000);
 
     return new Promise<void>((resolve, reject) => {
+      this._tcpClient.connect(this.port, this.host, () => {
+        this.log.info(`established connection to ${this.host}:${this.port}`);
+      });
+
       this._tcpClient.once('data', async data => {
         this.log.debug(`received: ${data}`);
         if (data.toString() === '*HELLO*') {
           this.connected = true;
           this.log.info(`successfully connected to ${this.host}:${this.port}`);
+          this.connectionAttempt = 1;
+          this.emit('connectionSuccess');
+
+          if (this.keepAlive) {
+            this.keepAliveId = setInterval(() => {
+              this.send('keepAlive');
+            }, this.keepAliveInternal * 1000);
+          }
 
           this._tcpClient.on('data', data => {
             this.log.debug(`received data: ${data}`);
@@ -108,9 +133,13 @@ export class RinnaiTouchNet extends EventEmitter {
             resolve();
           });
         } else {
-          this._tcpClient.destroy();
-          reject(new Error(`failed to connect to ${this.host}:${this.port}`));
+          this._tcpClient.end();
+          reject(new Error(`failed to connect to ${this.host}:${this.port}, no hello!`));
         }
+      });
+
+      this._tcpClient.on('end', () => {
+        this.log.warn(`received end of transmission from ${this.host}:${this.port}.`);
       });
 
       this._tcpClient.on('timeout', () => {
@@ -123,22 +152,29 @@ export class RinnaiTouchNet extends EventEmitter {
       });
 
       this._tcpClient.on('close', async hadError => {
-        this.connected = false;
+        if (this._tcpClient) {
+          this.log.warn(`connection still open to ${this.host}:${this.port}, forcing disconnect.`);
+          this._tcpClient.destroy(); // Ensure the socket is closed
+        }
+
+        if (keepAlive) {
+          this.log.debug('clearing keep alive interval');
+          clearInterval(this.keepAliveId);
+        }
+
         if (hadError) {
-          this.log.error(`unexpectedly disconnected from ${this.host}:${this.port}.`);
+          this.log.warn(`disconnected with error from ${this.host}:${this.port}.`);
         } else {
           this.log.info(`disconnected from ${this.host}:${this.port}.`);
         }
 
+        this.connected = false;
+
         if (this.reconnect) {
           await delay(5000); // adding delay to prevent rinnai touch module to refuse connection.
-          this.log.info(`attempting reconnection to ${this.host}:${this.port}`);
+          this.connectionAttempt++;
           await this.connect();
         }
-      });
-
-      this._tcpClient.connect(this.port, this.host, () => {
-        this.log.info(`established connection to ${this.host}:${this.port}`);
       });
     });
   }
@@ -169,6 +205,7 @@ export class RinnaiTouchNet extends EventEmitter {
 
   disconnect() {
     this.reconnect = false;
-    this._tcpClient.destroy();
+    this.connectionAttempt = 1;
+    this._tcpClient.end();
   }
 }

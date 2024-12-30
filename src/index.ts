@@ -124,7 +124,6 @@ function publishHaDiscovery(mqttClient: MqttClient) {
 }
 
 async function publishRinnaiTouch(mqttClient: MqttClient, rinnaiTouch: RinnaiTouchApi) {
-  await rinnaiTouch.connect();
   const config = rinnaiTouch.config();
   log.info(`publishing to mqtt broker on ${mqttClient.options.host}:${mqttClient.options.port}`);
   const replacer = (k, v) => (v !== undefined ? v : null);
@@ -204,11 +203,19 @@ async function main() {
     publishRinnaiTouch(mqttClient, rinnaiTouch);
   });
 
+  rinnaiTouch.on('connectionSuccess', () => {
+    mqttClient.publish(ONLINE_TOPIC, 'true', {retain: true});
+  });
+
+  rinnaiTouch.on('connectionError', () => {
+    mqttClient.publish(ONLINE_TOPIC, 'false', {retain: true});
+  });
+
   // stop service from exiting
-  setInterval(async () => {}, 10 * 60 * 1000);
+  setInterval(() => {}, 10 * 60 * 1000);
 
   // Clean up on exit
-  process.on('SIGINT', () => {
+  process.on('SIGINT', async () => {
     log.info('stopping rinnai touch proxy...');
     rinnaiTouch.disconnect();
     mqttClient.end(false, undefined, () => {
