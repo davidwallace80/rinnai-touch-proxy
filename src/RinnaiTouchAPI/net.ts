@@ -157,7 +157,7 @@ export class RinnaiTouchNet extends EventEmitter {
           this._tcpClient.destroy(); // Ensure the socket is closed
         }
 
-        if (keepAlive) {
+        if (this.keepAlive) {
           this.log.debug('clearing keep alive interval');
           clearInterval(this.keepAliveId);
         }
