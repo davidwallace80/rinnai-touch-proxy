@@ -1,6 +1,6 @@
 export interface Command {
   path: string;
-  values?: Record<string, any>;
+  values?: Record<string, unknown>;
   readWrite: boolean;
   description: string;
   serviceId?: string;
@@ -173,7 +173,7 @@ export const systemCommandSet = {
   },
 };
 
-export const serviceCommandSet = serviceId => {
+export const serviceCommandSet = (serviceId: string) => {
   return {
     commonZone: {
       path: `${serviceId}.CFG.ZUIS`,

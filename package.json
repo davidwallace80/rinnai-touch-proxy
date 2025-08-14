@@ -2,10 +2,14 @@
   "name": "rinnai-touch-proxy",
   "version": "1.0.0",
   "scripts": {
-    "build": "esbuild --bundle src/index.ts --outfile=dist/index.js --sourcemap --platform=node",
-    "build:prod": "esbuild --bundle src/index.ts --outfile=dist/index.js --platform=node --minify",
-    "build:watch": "esbuild --bundle src/index.ts --outfile=dist/index.js --sourcemap --platform=node --watch",
-    "lint": "eslint . --ext .ts --fix",
+    "depcheck": "depcheck --skip-missing --oneline --ignores @trivago/prettier-plugin-sort-imports",
+    "format": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|json)\"",
+    "lint": "eslint . --fix",
+    "type-check": "tsc --noEmit",
+    "validate": "npm run depcheck && npm run format && npm run lint && npm run type-check",
+    "build": "npm run validate && esbuild --bundle src/index.ts --outfile=dist/index.js --platform=node --minify",
+    "build:dev": "esbuild --bundle src/index.ts --outfile=dist/index.js --platform=node --sourcemap ",
+    "start:build": "node dist/index.js",
     "start": "tsx src/index.ts",
     "watch": "tsx watch src/"
   },
@@ -16,25 +20,26 @@
     "src"
   ],
   "dependencies": {
-    "dgram-as-promised": "^5.0.1",
-    "dotenv": "^16.0.3",
-    "json-diff": "^1.0.6",
+    "dotenv": "^17.2.1",
     "lodash": "^4.17.21",
     "mqtt": "^5.7.0",
     "tslog": "^4.9.2"
   },
   "devDependencies": {
-    "@types/json-diff": "^1.0.3",
-    "@types/lodash": "^4.17.1",
-    "@types/node": "^20.11.24",
-    "@typescript-eslint/eslint-plugin": "^7.1.1",
-    "@typescript-eslint/parser": "^7.1.1",
-    "esbuild": "^0.17.18",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.1.3",
-    "prettier": "^3.2.5",
-    "tsx": "^4.7.1",
-    "typescript": "^5.0.4"
+    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/js": "^9.17.0",
+    "@types/lodash": "^4.17.14",
+    "@types/node": "^24.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.19.0",
+    "@typescript-eslint/parser": "^8.19.0",
+    "depcheck": "^1.4.7",
+    "esbuild": "^0.25.9",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.2.1",
+    "globals": "^16.3.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }

@@ -1,5 +1,4 @@
 require('dotenv').config(); // eslint-disable-line
-import _ from 'lodash';
 import {Logger} from 'tslog';
 import * as dgram from 'dgram';
 import * as net from 'net';
@@ -17,18 +16,18 @@ interface Status {
 }
 
 export class RinnaiTouchNet extends EventEmitter {
-  _udpClient: dgram.Socket;
-  _tcpClient: net.Socket;
-  _status: Status;
+  _udpClient!: dgram.Socket;
+  _tcpClient!: net.Socket;
+  _status!: Status;
   log = new Logger({minLevel: parseInt(process.env.LOG_LEVEL || '3')});
   connected = false;
-  reconnect: boolean;
+  reconnect!: boolean;
   connectionAttempt = 1;
-  keepAlive: boolean;
+  keepAlive!: boolean;
   keepAliveInternal = 60;
-  keepAliveId: NodeJS.Timeout;
-  host: string;
-  port: number;
+  keepAliveId!: NodeJS.Timeout;
+  host!: string;
+  port!: number;
 
   constructor(host?: string, port?: number) {
     super();
@@ -127,7 +126,7 @@ export class RinnaiTouchNet extends EventEmitter {
                   this.emit('statusChanged');
                 }
               } catch (e) {
-                this.log.error(e.message);
+                this.log.error((e as Error).message);
               }
             }
             resolve();

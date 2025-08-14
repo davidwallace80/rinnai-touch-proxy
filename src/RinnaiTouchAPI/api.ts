@@ -2,31 +2,47 @@ import _ from 'lodash';
 import {RinnaiTouchNet, delay} from './net';
 import {serviceCommandSet, systemCommandSet} from './commandSet';
 
+type ConfigObject = Record<string, unknown>;
+type CommandSetType = Record<
+  string,
+  {
+    path: string;
+    values?: Record<string, unknown>;
+    readWrite: boolean;
+    description: string;
+    serviceId?: string;
+    supportedServices?: string[];
+  }
+>;
+
 export class RinnaiTouchApi extends RinnaiTouchNet {
-  config() {
+  config(): ConfigObject {
     this.log.info('getting config');
 
     // make status searchable
     const statusObject = _.merge(this._status.state[0], ...this._status.state.slice(1)); // collapse arrays.
 
     // translate system configuration
-    const systemConfig = {};
+    const systemConfig: ConfigObject = {};
     for (const setting of Object.keys(systemCommandSet)) {
-      systemConfig[setting] = systemCommandSet[setting].values ? systemCommandSet[setting].values[_.get(statusObject, systemCommandSet[setting].path)] : _.get(statusObject, systemCommandSet[setting].path);
+      const commandDef = (systemCommandSet as CommandSetType)[setting];
+      systemConfig[setting] = commandDef.values ? commandDef.values[_.get(statusObject, commandDef.path)] : _.get(statusObject, commandDef.path);
     }
 
-    const config = {system: systemConfig};
+    const config: ConfigObject = {system: systemConfig};
 
     // translate service configuration
     const serviceList = _.pickBy(systemCommandSet, o => _.has(o, 'serviceId'));
 
     for (const service of Object.keys(serviceList)) {
       if (systemConfig[service] === true) {
-        const commandSet = serviceCommandSet(serviceList[service]['serviceId']);
-        const serviceConfig = {};
+        const serviceEntry = serviceList[service] as {serviceId: string};
+        const commandSet = serviceCommandSet(serviceEntry.serviceId);
+        const serviceConfig: ConfigObject = {};
         for (const setting of Object.keys(commandSet)) {
-          if (commandSet[setting].supportedServices.includes(service)) {
-            serviceConfig[setting] = commandSet[setting].values ? commandSet[setting].values[_.get(statusObject, commandSet[setting].path)] : _.get(statusObject, commandSet[setting].path);
+          const commandDef = (commandSet as CommandSetType)[setting];
+          if (commandDef.supportedServices?.includes(service)) {
+            serviceConfig[setting] = commandDef.values ? commandDef.values[_.get(statusObject, commandDef.path)] : _.get(statusObject, commandDef.path);
           }
         }
         config[service] = serviceConfig;
@@ -42,29 +58,32 @@ export class RinnaiTouchApi extends RinnaiTouchNet {
     const serviceList = _.pickBy(systemCommandSet, o => _.has(o, 'serviceId'));
 
     // validate service
-    if (!(service === 'system' || (serviceList[service] && this.config()['system'][service]))) {
+    const serviceListTyped = serviceList as Record<string, {serviceId: string}>;
+    const configTyped = this.config() as {system: ConfigObject};
+    if (!(service === 'system' || (serviceListTyped[service] && configTyped.system[service]))) {
       throw new Error(`${service} service unavailble or not valid!`);
     }
 
     // set command set.
-    const commandSet = service === 'system' ? systemCommandSet : serviceCommandSet(serviceList[service]['serviceId']);
+    const commandSet = service === 'system' ? systemCommandSet : serviceCommandSet(serviceListTyped[service].serviceId);
 
     // validate command
-    if (!(commandSet[command] && commandSet[command].readWrite === true && commandSet[command].supportedServices.includes(service))) {
+    const commandDef = (commandSet as CommandSetType)[command];
+    if (!(commandDef && commandDef.readWrite === true && commandDef.supportedServices?.includes(service))) {
       throw new Error('command not valid');
     }
 
     // validate value
-    if (!(_.invert(commandSet[command].values)[value] || !commandSet[command].values)) {
+    if (commandDef.values && !_.invert(commandDef.values as Record<string, string>)[value]) {
       throw new Error('value not valid!');
     }
 
     // construct payload
-    const path = commandSet[command].path.split('.');
-    const payload = {};
-    payload[path[0]] = {};
-    payload[path[0]][path[1]] = {};
-    payload[path[0]][path[1]][path[2]] = commandSet[command].values ? _.invert(commandSet[command].values)[value] : value;
+    const path = commandDef.path.split('.');
+    const payload: ConfigObject = {};
+    (payload[path[0]] as ConfigObject) = {};
+    ((payload[path[0]] as ConfigObject)[path[1]] as ConfigObject) = {};
+    ((payload[path[0]] as ConfigObject)[path[1]] as ConfigObject)[path[2]] = commandDef.values ? _.invert(commandDef.values)[value] : value;
 
     // send command
     this.send(JSON.stringify(payload, null, 0));
@@ -76,7 +95,8 @@ export class RinnaiTouchApi extends RinnaiTouchNet {
 
     do {
       await delay(interval);
-      if (this.config()[service][command] === value) {
+      const currentConfig = this.config() as ConfigObject;
+      if ((currentConfig[service] as ConfigObject)?.[command] === value) {
         return true;
       }
     } while (Date.now() - startTime < timeout);

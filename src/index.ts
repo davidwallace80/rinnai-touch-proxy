@@ -1,5 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-require('dotenv').config();
+import 'dotenv/config';
 import {Logger} from 'tslog';
 import {RinnaiTouchApi} from './RinnaiTouchAPI/api';
 import mqtt, {MqttClient} from 'mqtt';
@@ -8,7 +7,7 @@ const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '3');
 const MQTT_HOST = process.env.MQTT_HOST;
 const MQTT_PORT = parseInt(process.env.MQTT_PORT || '1883');
 const RINNAI_HOST = process.env.RINNAI_HOST;
-const RINNAI_PORT = parseInt(process.env.RINNAI_PORT);
+const RINNAI_PORT = parseInt(process.env.RINNAI_PORT || '27847');
 const ROOT_TOPIC = 'rinnaitouch';
 const ONLINE_TOPIC = `${ROOT_TOPIC}/online`;
 const CONFIG_TOPIC = `${ROOT_TOPIC}/config`;
@@ -19,7 +18,7 @@ const HA_DISCOVERY_TOPIC = 'homeassistant';
 
 const log = new Logger({minLevel: LOG_LEVEL});
 
-function publishHaEntity(mqttClient: MqttClient, type: string, config: Object) {
+function publishHaEntity(mqttClient: MqttClient, type: string, config: Record<string, unknown>) {
   const entityBase = {
     platform: 'mqtt',
     device: {
@@ -33,8 +32,9 @@ function publishHaEntity(mqttClient: MqttClient, type: string, config: Object) {
 
   Object.assign(config, entityBase);
 
-  log.info(`publishing home assistant discovery for ${type} entity id ${config.unique_id}`);
-  mqttClient.publish(`${HA_DISCOVERY_TOPIC}/${type}/${config.unique_id}/config`, JSON.stringify(config, null, 4), {retain: true});
+  const configWithId = config as {unique_id: string};
+  log.info(`publishing home assistant discovery for ${type} entity id ${configWithId.unique_id}`);
+  mqttClient.publish(`${HA_DISCOVERY_TOPIC}/${type}/${configWithId.unique_id}/config`, JSON.stringify(config, null, 4), {retain: true});
 }
 
 function publishHaDiscovery(mqttClient: MqttClient) {
@@ -126,15 +126,16 @@ function publishHaDiscovery(mqttClient: MqttClient) {
 async function publishRinnaiTouch(mqttClient: MqttClient, rinnaiTouch: RinnaiTouchApi) {
   const config = rinnaiTouch.config();
   log.info(`publishing to mqtt broker on ${mqttClient.options.host}:${mqttClient.options.port}`);
-  const replacer = (k, v) => (v !== undefined ? v : null);
+  const replacer = (k: string, v: unknown) => (v !== undefined ? v : null);
   mqttClient.publish(STATUS_TOPIC, JSON.stringify(rinnaiTouch._status.state, replacer, 4), {retain: true});
   mqttClient.publish(CONFIG_TOPIC, JSON.stringify(config, replacer, 4), {retain: true});
 
   // publish config properties
   for (const service of Object.keys(config)) {
-    for (const key of Object.keys(config[service])) {
+    const serviceConfig = config[service as keyof typeof config] as Record<string, unknown>;
+    for (const key of Object.keys(serviceConfig)) {
       const topic = `${CONFIG_TOPIC}/${service}/${key}`;
-      const message = config[service][key] !== undefined ? String(config[service][key]) : 'null';
+      const message = serviceConfig[key] !== undefined ? String(serviceConfig[key]) : 'null';
       mqttClient.publish(topic, message, {retain: true});
     }
   }
@@ -181,10 +182,14 @@ async function main() {
         }
         await rinnaiTouch.connect();
         const result = await rinnaiTouch.command(command[0], command[1], command[2]);
-        result ? log.info(`command succesful: ${payload.toString()}`) : log.warn(`command failed: ${payload.toString()}`);
+        if (result) {
+          log.info(`command succesful: ${payload.toString()}`);
+        } else {
+          log.warn(`command failed: ${payload.toString()}`);
+        }
         mqttClient.publish(`${CONFIG_CMD_TOPIC}/success`, String(result));
       } catch (e) {
-        log.error(`error processing command: ${e.message}`);
+        log.error(`error processing command: ${(e as Error).message}`);
         mqttClient.publish(`${CONFIG_CMD_TOPIC}/success`, 'false');
       }
     }
