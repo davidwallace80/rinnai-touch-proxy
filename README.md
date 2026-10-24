@@ -33,7 +33,7 @@ The MQTT proxy translates MQTT commands into raw commands understood by the WiFi
    npm install
    ```
 
-3. Configure the following environment variables:
+3. Configure the following environment variables, either directly or by copying `.env.example` to `.env` and updating it:
 
    ```env
    MQTT_HOST=<your-mqtt-broker-host>
@@ -73,12 +73,41 @@ The proxy automatically publishes Home Assistant discovery configuration for Rev
 Currently supported entities:
 
 - Status Sensor: Reports the online status of the proxy.
-- Reverse Cycle Switch: Controls the Reverse Cycle operating state.
+- Reverse Cycle Status: Reports the Reverse Cycle operating state (Off, On or Fan Only).
+- Reverse Cycle Off / On / Fan Only Buttons: Set the Reverse Cycle operating state. The controller only accepts a change between On and Fan Only via Off.
+- Reverse Cycle Fan Speed: Slider to set the fan speed (1-16).
 - Zone Control: Controls the system's mode (cooling, heating, etc.) and set temperature.
 
 ## Docker
 
 The supplied Dockerfile can be used to create a docker image. Ensure enviroment variables have been supplied when starting the docker container. Note. Discovery of the Rinnai Touch module will not work in docker if host networking is not in use. You will need to supply host and port through environment variables.
+
+### Docker Compose
+
+A `docker-compose.yaml` is supplied, which reads its configuration from a `.env` file.
+
+1. Copy `.env.example` to `.env` and update it to match your MQTT broker and Rinnai Touch module. `RINNAI_HOST` and `RINNAI_PORT` are required, as discovery will not work on the bridge network:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Build the proxy. The Dockerfile copies the prebuilt `dist/index.js` into the image, so this must be run first:
+
+   ```bash
+   npm install
+   npm run build
+   ```
+
+3. Build the image and start the container:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+After updating the code, repeat steps 2 and 3. Without `--build`, compose reuses the existing `rinnai-touch-proxy:latest` image and the changes will not be picked up.
+
+The image is only built locally, so `docker compose pull` will not work.
 
 ## License
 

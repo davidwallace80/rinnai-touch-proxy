@@ -16,6 +16,11 @@ const STATUS_TOPIC = `${ROOT_TOPIC}/status`;
 const CONFIG_CMD_TOPIC = `${ROOT_TOPIC}/command`;
 const STATUS_CMD_TOPIC = `${ROOT_TOPIC}/rawcommand`;
 const HA_DISCOVERY_TOPIC = 'homeassistant';
+const REVERSE_CYCLE_OPERATING_STATES = [
+  {value: 'off', label: 'Off', icon: 'mdi:power-off'},
+  {value: 'on', label: 'On', icon: 'mdi:power'},
+  {value: 'fan', label: 'Fan Only', icon: 'mdi:fan'},
+];
 
 const log = new Logger({minLevel: LOG_LEVEL});
 
@@ -35,6 +40,11 @@ function publishHaEntity(mqttClient: MqttClient, type: string, config: Object) {
 
   log.info(`publishing home assistant discovery for ${type} entity id ${config.unique_id}`);
   mqttClient.publish(`${HA_DISCOVERY_TOPIC}/${type}/${config.unique_id}/config`, JSON.stringify(config, null, 4), {retain: true});
+}
+
+function removeHaEntity(mqttClient: MqttClient, type: string, uniqueId: string) {
+  log.info(`removing home assistant discovery for ${type} entity id ${uniqueId}`);
+  mqttClient.publish(`${HA_DISCOVERY_TOPIC}/${type}/${uniqueId}/config`, '', {retain: true});
 }
 
 function publishHaDiscovery(mqttClient: MqttClient) {
@@ -89,18 +99,43 @@ function publishHaDiscovery(mqttClient: MqttClient) {
     json_attributes_topic: CONFIG_TOPIC,
   });
 
-  publishHaEntity(mqttClient, 'switch', {
-    name: 'Reverse Cycle',
-    unique_id: 'rinnai_touch_proxy_reverse_cycle_operating_state',
-    device_class: 'switch',
-    icon: 'mdi:power',
+  removeHaEntity(mqttClient, 'switch', 'rinnai_touch_proxy_reverse_cycle_operating_state');
+
+  const operatingStateLabels = Object.fromEntries(REVERSE_CYCLE_OPERATING_STATES.map(s => [s.value, s.label]));
+
+  publishHaEntity(mqttClient, 'sensor', {
+    name: 'Reverse Cycle Status',
+    unique_id: 'rinnai_touch_proxy_reverse_cycle_operating_state_sensor',
+    icon: 'mdi:hvac',
     state_topic: `${CONFIG_TOPIC}/reverseCycle/operatingState`,
-    state_off: 'off',
-    state_on: 'on',
+    device_class: 'enum',
+    options: REVERSE_CYCLE_OPERATING_STATES.map(s => s.label),
+    value_template: `{% set lookup = ${JSON.stringify(operatingStateLabels)} %}{{ lookup.get(value) }}`,
+  });
+
+  for (const state of REVERSE_CYCLE_OPERATING_STATES) {
+    publishHaEntity(mqttClient, 'button', {
+      name: `Reverse Cycle ${state.label}`,
+      unique_id: `rinnai_touch_proxy_reverse_cycle_operating_state_${state.value}`,
+      icon: state.icon,
+      command_topic: CONFIG_CMD_TOPIC,
+      payload_press: `["reverseCycle", "operatingState", "${state.value}"]`,
+    });
+  }
+
+  publishHaEntity(mqttClient, 'number', {
+    name: 'Reverse Cycle Fan Speed',
+    unique_id: 'rinnai_touch_proxy_reverse_cycle_fan_speed',
+    icon: 'mdi:fan',
+    mode: 'slider',
+    min: 1,
+    max: 16,
+    step: 1,
+    state_topic: `${CONFIG_TOPIC}/reverseCycle/fanSpeed`,
+    value_template: `{{ value | int(None) }}`,
     command_topic: CONFIG_CMD_TOPIC,
-    payload_off: `["reverseCycle", "operatingState", "off"]`,
-    payload_on: `["reverseCycle", "operatingState", "on"]`,
-    optimistic: false,
+    // controller reports and confirms fan speed as a zero-padded two digit string
+    command_template: `["reverseCycle", "fanSpeed", "{{ '%02d' % (value | int) }}"]`,
   });
 
   publishHaEntity(mqttClient, 'climate', {
